@@ -13,7 +13,7 @@ public class ItemController {
     }
 
     @GetMapping("/")
-    String welcome() {
-        return "Here are all the database items: " + itemRepository.findAll();
+    Object welcome() {
+        return itemRepository.findAll();
     }
 }
