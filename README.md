@@ -19,7 +19,7 @@ You also need to provide your local IP address to access the database from your 
 Once those environment variables are set, you can run the following command to create the resources:
 
 ```bash
-	AZ_LOCATION=eastus
+AZ_LOCATION=eastus
 AZ_SPRING_CLOUD=spring-${AZ_RESOURCE_GROUP}
 AZ_DATABASE_NAME=pgsql-${AZ_RESOURCE_GROUP}
 AZ_DATABASE_USERNAME=${AZ_DATABASE_USERNAME}
@@ -95,13 +95,13 @@ As we've seen in the previous unit, it's a bad practice to hard-code those value
 
 #Test on local 
 ```bash
-	./mvnw spring-boot:run
-	curl http://localhost:8080
+    ./mvnw spring-boot:run
+    curl http://localhost:8080
 ```
 
 #Deploy the Java application to Azure
 ```bash	
-	az spring-cloud app deploy \
+    az spring-cloud app deploy \
    --resource-group $AZ_RESOURCE_GROUP \
    --service $AZ_SPRING_CLOUD \
    --name application \
@@ -111,3 +111,70 @@ As we've seen in the previous unit, it's a bad practice to hard-code those value
    
 ```
 Congratulations, you've successfully created a Java application that connects to a database! Now you'll need to secure the database credentials in the next units.
+
+
+# Store secrets into Azure Key Vault
+
+```bash
+
+AZ_KEY_VAULT_NAME=kv-${AZ_RESOURCE_GROUP}
+
+az keyvault create \
+    --name $AZ_KEY_VAULT_NAME \
+    --resource-group $AZ_RESOURCE_GROUP \
+    --location $AZ_LOCATION
+
+az keyvault secret set \
+    --vault-name $AZ_KEY_VAULT_NAME \
+    --name azureDatabaseName \
+    --value ${AZ_DATABASE_NAME}
+
+az keyvault secret set \
+    --vault-name $AZ_KEY_VAULT_NAME \
+    --name azureDatabaseUsername \
+    --value ${AZ_DATABASE_USERNAME}
+
+az keyvault secret set \
+    --vault-name $AZ_KEY_VAULT_NAME \
+    --name azureDatabasePassword \
+    --value ${AZ_DATABASE_PASSWORD}
+
+```
+
+# Grant your application access to Azure Key Vault
+To access Azure Key Vault, your Spring Boot application needs first to have an Azure identity assigned.
+```bash
+az spring-cloud app identity assign \
+   --resource-group $AZ_RESOURCE_GROUP \
+   --service $AZ_SPRING_CLOUD \
+   --name application
+   
+az spring-cloud app update \
+   --resource-group $AZ_RESOURCE_GROUP \
+   --service $AZ_SPRING_CLOUD \
+   --name application \
+   --env \
+   AZURE_KEYVAULT_ENABLED=true \
+   AZURE_KEYVAULT_URI=https://$AZ_KEY_VAULT_NAME.vault.azure.net/
+   
+AZ_SPRING_CLOUD_PRINCIPAL_ID=$(az spring-cloud app identity show --resource-group $AZ_RESOURCE_GROUP --service $AZ_SPRING_CLOUD --name application | jq --raw-output '.principalId')
+
+az keyvault set-policy \
+    --name $AZ_KEY_VAULT_NAME \
+    --resource-group $AZ_RESOURCE_GROUP \
+    --object-id $AZ_SPRING_CLOUD_PRINCIPAL_ID \
+    --secret-permissions get list
+    
+ az spring-cloud app deploy \
+   --resource-group $AZ_RESOURCE_GROUP \
+   --service $AZ_SPRING_CLOUD \
+   --name application \
+   --jar-path target/*.jar
+   
+ az spring-cloud app logs \
+   --resource-group $AZ_RESOURCE_GROUP \
+   --service $AZ_SPRING_CLOUD \
+   --name application
+   
+curl https://$AZ_SPRING_CLOUD-application.azuremicroservices.io
+```
